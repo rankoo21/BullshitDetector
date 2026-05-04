@@ -1,0 +1,5 @@
+pyproject.toml
+tests/
+studio_contracts/
+*.py
+.pytest_cache/

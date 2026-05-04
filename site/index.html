@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BullshitDetector &mdash; on-chain claim verification by LLM consensus</title>
+<meta name="description" content="Submit any claim. Five validator LLMs fact-check it independently and reach on-chain consensus. Powered by GenLayer." />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  code, pre { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .gradient-text {
+    background: linear-gradient(90deg, #f43f5e, #f59e0b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .verdict-true  { background: linear-gradient(135deg, #059669, #10b981); }
+  .verdict-false { background: linear-gradient(135deg, #dc2626, #f43f5e); }
+  .verdict-unv   { background: linear-gradient(135deg, #64748b, #94a3b8); }
+  .pulse-dot::before {
+    content: ''; position: absolute; inset: 0;
+    border-radius: 9999px; background: inherit;
+    animation: ping 2s cubic-bezier(0,0,0.2,1) infinite;
+    opacity: 0.6;
+  }
+  @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+<!-- Nav -->
+<header class="border-b border-white/10 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
+  <nav class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <div class="text-2xl">&#x1F4E2;</div>
+      <span class="font-extrabold text-lg">BullshitDetector</span>
+      <span class="hidden sm:inline-block text-xs bg-white/10 px-2 py-0.5 rounded ml-2">on-chain</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="wallet-info" class="hidden text-xs bg-white/10 px-3 py-1.5 rounded-lg"></span>
+      <button id="connect-btn" class="bg-white text-slate-900 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-200">Connect Wallet</button>
+    </div>
+  </nav>
+</header>
+
+<!-- Hero -->
+<section class="max-w-5xl mx-auto px-6 pt-16 pb-8">
+  <div class="inline-flex items-center gap-2 bg-rose-500/10 text-rose-300 px-3 py-1 rounded-full text-xs font-semibold mb-6">
+    <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+    GenLayer Builders Program &middot; Tools &amp; Infrastructure
+  </div>
+  <h1 class="text-5xl md:text-7xl font-black leading-[0.95] tracking-tight mb-6">
+    Smell test for the <span class="gradient-text">internet.</span>
+  </h1>
+  <p class="text-xl text-slate-400 max-w-2xl mb-2 leading-relaxed">
+    Submit any claim. <strong class="text-slate-200">Five validator LLMs fact-check it independently</strong> and reach
+    consensus on chain. No oracles, no API keys, no centralised arbiter.
+  </p>
+  <p class="text-sm text-slate-500">
+    Built on <a href="https://genlayer.com" class="underline hover:text-slate-300">GenLayer</a> &mdash; the only chain where
+    contracts can call the web and reach consensus on LLM judgements.
+  </p>
+</section>
+
+<!-- Fact-checker -->
+<section class="max-w-5xl mx-auto px-6 pb-16">
+  <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-white/10 rounded-3xl p-8 shadow-2xl">
+
+    <div class="flex items-center justify-between flex-wrap gap-3 mb-6">
+      <h2 class="text-2xl font-bold flex items-center gap-2">
+        <span class="text-2xl">&#x1F50D;</span> Fact-check anything
+      </h2>
+      <div class="flex items-center gap-2 text-xs">
+        <label class="text-slate-400">Network:</label>
+        <select id="network-select" class="bg-white/10 border border-white/20 px-2 py-1 rounded text-xs">
+          <option value="studionet">studionet</option>
+          <option value="testnetAsimov">testnetAsimov</option>
+          <option value="testnetBradbury">testnetBradbury</option>
+          <option value="localnet">localnet</option>
+        </select>
+        <span id="sdk-status" class="text-slate-500">loading&hellip;</span>
+      </div>
+    </div>
+
+    <!-- Tab toggle -->
+    <div class="flex gap-1 mb-4 bg-white/5 rounded-lg p-1 w-fit">
+      <button id="tab-claim" class="px-4 py-1.5 rounded-md text-sm font-semibold bg-white/15">Text claim</button>
+      <button id="tab-url" class="px-4 py-1.5 rounded-md text-sm font-semibold text-slate-400 hover:text-slate-200">URL + claim</button>
+    </div>
+
+    <!-- Inputs -->
+    <div id="input-claim" class="space-y-3">
+      <textarea id="claim-text" rows="3" class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500/50 resize-none" placeholder="e.g. Bitcoin was invented in 2003 by Satoshi Nakamoto"></textarea>
+    </div>
+    <div id="input-url" class="space-y-3 hidden">
+      <input id="url-input" type="text" class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500/50" placeholder="https://example.com/article" />
+      <textarea id="url-claim-text" rows="2" class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500/50 resize-none" placeholder="What claim from this article are you checking?"></textarea>
+    </div>
+
+    <button id="verify-btn" class="mt-4 w-full bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 text-white px-6 py-4 rounded-xl text-lg font-extrabold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+      &#x1F4E2; Verify on chain
+    </button>
+
+    <p class="mt-3 text-xs text-slate-500">
+      Connecting your wallet is required to submit a claim (writes a transaction).
+      Reading the latest verdict and stats below works without one.
+    </p>
+
+    <!-- Status banner -->
+    <div id="status-banner" class="mt-4 hidden rounded-xl p-4 text-sm font-mono"></div>
+
+    <!-- Verdict card -->
+    <div id="verdict-card" class="mt-6 hidden">
+      <div id="verdict-pill" class="inline-block px-4 py-1.5 rounded-full text-sm font-extrabold tracking-wide mb-4">VERDICT</div>
+      <div id="verdict-claim" class="text-2xl font-bold leading-tight mb-4 text-slate-100"></div>
+      <div class="grid sm:grid-cols-2 gap-4 mb-4">
+        <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+          <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">Confidence</div>
+          <div id="verdict-confidence" class="text-3xl font-bold font-mono">&hellip;</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+          <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">Sources</div>
+          <div id="verdict-sources" class="text-sm font-mono break-all">&hellip;</div>
+        </div>
+      </div>
+      <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+        <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">Validator reasoning</div>
+        <div id="verdict-reasoning" class="text-sm leading-relaxed text-slate-300">&hellip;</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Leaderboard / Stats -->
+<section class="max-w-5xl mx-auto px-6 pb-16">
+  <div class="flex items-center justify-between mb-6">
+    <h2 class="text-2xl font-bold flex items-center gap-3">
+      <span class="relative inline-flex h-3 w-3 rounded-full bg-emerald-500 pulse-dot"></span>
+      On-chain stats
+    </h2>
+    <button id="stats-refresh" class="text-xs bg-white/10 hover:bg-white/15 px-3 py-1.5 rounded-lg font-semibold">&#x21BB; refresh</button>
+  </div>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-white/10 rounded-2xl p-5">
+      <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">Total checked</div>
+      <div id="stat-total" class="text-4xl font-extrabold font-mono">0</div>
+    </div>
+    <div class="bg-gradient-to-br from-emerald-900/40 to-slate-950 border border-emerald-500/20 rounded-2xl p-5">
+      <div class="text-xs uppercase tracking-wider text-emerald-300 mb-2">True</div>
+      <div id="stat-true" class="text-4xl font-extrabold font-mono text-emerald-300">0</div>
+    </div>
+    <div class="bg-gradient-to-br from-rose-900/40 to-slate-950 border border-rose-500/20 rounded-2xl p-5">
+      <div class="text-xs uppercase tracking-wider text-rose-300 mb-2">False</div>
+      <div id="stat-false" class="text-4xl font-extrabold font-mono text-rose-300">0</div>
+    </div>
+    <div class="bg-gradient-to-br from-slate-800 to-slate-950 border border-white/10 rounded-2xl p-5">
+      <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">Unverifiable</div>
+      <div id="stat-unv" class="text-4xl font-extrabold font-mono text-slate-300">0</div>
+    </div>
+  </div>
+  <div class="mt-6 bg-white/5 border border-white/10 rounded-2xl p-5">
+    <div class="text-xs uppercase tracking-wider text-slate-400 mb-3">Most recent claim on chain</div>
+    <div id="recent-claim" class="text-lg font-medium text-slate-200 mb-3">no submissions yet</div>
+    <div class="flex flex-wrap items-center gap-3 text-xs font-mono">
+      <span id="recent-verdict-pill" class="hidden px-2 py-1 rounded font-bold">VERDICT</span>
+      <span id="recent-confidence" class="text-slate-400"></span>
+      <span id="recent-url" class="text-slate-500 break-all"></span>
+    </div>
+  </div>
+  <p class="mt-4 text-xs text-slate-500">
+    Contract: <code id="contract-addr" class="bg-white/10 px-1.5 py-0.5 rounded">loading&hellip;</code>
+  </p>
+</section>
+
+<!-- How it works -->
+<section class="max-w-5xl mx-auto px-6 pb-16">
+  <h2 class="text-2xl font-bold mb-6">How it works</h2>
+  <div class="grid md:grid-cols-3 gap-4">
+    <div class="bg-white/5 border border-white/10 rounded-2xl p-5">
+      <div class="text-3xl mb-3">1</div>
+      <h3 class="font-bold mb-2">You submit a claim</h3>
+      <p class="text-sm text-slate-400">Free-form text or a URL. Your wallet signs a transaction; nothing is held off-chain.</p>
+    </div>
+    <div class="bg-white/5 border border-white/10 rounded-2xl p-5">
+      <div class="text-3xl mb-3">2</div>
+      <h3 class="font-bold mb-2">Five validators fact-check independently</h3>
+      <p class="text-sm text-slate-400">Each validator runs a fresh LLM completion with the same prompt. They cannot see one another's output.</p>
+    </div>
+    <div class="bg-white/5 border border-white/10 rounded-2xl p-5">
+      <div class="text-3xl mb-3">3</div>
+      <h3 class="font-bold mb-2">On-chain consensus</h3>
+      <p class="text-sm text-slate-400">GenLayer's <code>prompt_comparative</code> equivalence principle requires all validators to agree on VERDICT. Confidence may vary by &le;25 points.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="border-t border-white/10 mt-12">
+  <div class="max-w-5xl mx-auto px-6 py-8 text-center text-sm text-slate-500">
+    Built for the <strong class="text-slate-300">GenLayer Builders Program</strong> &middot;
+    <a href="https://github.com/" class="underline hover:text-slate-300">GitHub</a> &middot;
+    <a href="https://docs.genlayer.com" class="underline hover:text-slate-300">GenLayer docs</a>
+  </div>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -17,6 +17,7 @@ of an LLM** rather than just a deterministic byte sequence.
 
 ## Live deployment
 
+- 🌐 **Website**: <https://bullshit-detector-brown.vercel.app/>
 - Network: **studionet**
 - Contract: `0xa99B32CC23189e3DE78343F96840097dcC27a081`
 

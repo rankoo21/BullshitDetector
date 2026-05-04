@@ -286,17 +286,54 @@ async function verify() {
       args,
       value: BigInt(0),
     });
-    showStatus("tx submitted: " + txHash + "\nFive validators are fact-checking independently. This usually takes 30-60s.", "pending");
+    showStatus("tx submitted: " + txHash + "\nFive validators are fact-checking independently. This usually takes 30-90s.", "pending");
 
-    await STATE.readClient.waitForTransactionReceipt({
-      hash: txHash,
-      status: TransactionStatus.ACCEPTED,
-    });
+    /* GenLayer consensus regularly takes 45-90s. Give it up to ~5 minutes
+       and fall back to reading the chain state even if waitForReceipt
+       eventually gives up: the tx often lands successfully while the
+       client-side poller is still waiting. */
+    let receiptOk = false;
+    try {
+      await STATE.readClient.waitForTransactionReceipt({
+        hash: txHash,
+        status: TransactionStatus.ACCEPTED,
+        retries: 120,
+        interval: 2500,
+      });
+      receiptOk = true;
+    } catch (waitErr) {
+      console.warn("waitForTransactionReceipt timed out, will fall back to reading chain state:", waitErr);
+    }
 
-    showStatus("ACCEPTED · reading verdict from chain...", "pending");
-    const details = await readVerdictDetails();
-    renderVerdict(details);
-    showStatus("✓ Consensus reached. tx: " + txHash, "success");
+    showStatus(
+      (receiptOk ? "ACCEPTED" : "Still waiting on chain confirmation") +
+      " · reading verdict from chain...",
+      "pending"
+    );
+
+    /* Poll the view methods for up to another ~90s to catch the verdict
+       the moment it lands, whether or not waitForReceipt returned cleanly. */
+    let details = null;
+    for (let i = 0; i < 30; i++) {
+      const d = await readVerdictDetails();
+      if (d.verdict && d.claim) {
+        details = d;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+
+    if (details) {
+      renderVerdict(details);
+      showStatus("✓ Consensus reached. tx: " + txHash, "success");
+    } else {
+      showStatus(
+        "Transaction submitted but the verdict hasn't landed yet.\n" +
+        "tx: " + txHash + "\n" +
+        "Refresh the stats panel in a minute to see the result.",
+        "pending"
+      );
+    }
     refreshStats();
   } catch (err) {
     showStatus("Failed: " + (err.message || err), "error");
